@@ -65,7 +65,7 @@ Lưu ý: bản production nhận câu hỏi trong JSON body; không gửi `quest
 
 ### Exercise 3.1 & 3.2: Triển khai Agent Part 6 và So sánh nền tảng
 
-- **URL Public:** `https://production-ai-agent-k5.up.railway.app` (hoặc `https://production-ai-agent-k5.onrender.com`)
+- **URL Public:** `https://production-ai-agent-83m0.onrender.com`
 - **Ảnh minh chứng:** Lưu tại [screenshots/](screenshots/) (`dashboard.png`, `running.png`, `test.png`).
 - **Kết quả 4 lệnh tự kiểm tra CP6:**
   1. `GET /health` → HTTP 200 (Liveness OK).

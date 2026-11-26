@@ -1,18 +1,18 @@
 # Deployment Information
 
 ## Public URL
-- Public URL: `https://production-ai-agent-k5.up.railway.app` (hoặc `https://production-ai-agent-k5.onrender.com`)
+- Public URL: `https://production-ai-agent-83m0.onrender.com`
 
 ## Platform
-- Nền tảng: Railway / Render
+- Nền tảng: Render
 - Source: `06-lab-complete/` (chạy image Docker build từ `Dockerfile` multi-stage)
-- Managed Services: Cloud Redis (Redis URL kết nối nội bộ / public SSL)
+- Managed Services: Render Redis (`agent-redis`, Internal Connection String)
 
 ## Environment Variables Set Trên Platform
-- `PORT`: do platform cấp động (mặc định fallback 8000)
+- `PORT`: 8000 (Render cấp)
 - `ENVIRONMENT`: `production`
-- `AGENT_API_KEY`: `<set_via_platform_secret>`
-- `REDIS_URL`: `redis://default:<password>@<host>:<port>` (kết nối Redis instance)
+- `AGENT_API_KEY`: Đã cấu hình trên Render Environment
+- `REDIS_URL`: `redis://red-dc440uijnfac73bf0ne0:hcfMJhNDrpxlUcm7vmSLv0chPCAqqf2k@red-dc440uijnfac73bf0ne0:6379`
 - `RATE_LIMIT_PER_MINUTE`: `60`
 - `DAILY_BUDGET_USD`: `10.0`
 
