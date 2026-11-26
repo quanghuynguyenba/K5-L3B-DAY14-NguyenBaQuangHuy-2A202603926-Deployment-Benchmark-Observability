@@ -124,25 +124,64 @@ Pipeline CI/CD trong `03-cloud-deployment/production-cloud-run/` tự động k�
 
 `AGENT_API_KEY` được đọc từ biến môi trường. Dependency `verify_api_key` bảo vệ `POST /ask`: thiếu key trả HTTP 401, key không hợp lệ trả HTTP 403, key đúng cho phép request tiếp tục. Có thể rotate key bằng cách đổi biến môi trường rồi khởi động lại app; không ghi key thật vào source code.
 
-Đã nhận response body khi gọi thiếu key:
+Output `curl -i` khi gọi thiếu API key (`HTTP/1.1 401 Unauthorized`):
 
-```json
+```http
+HTTP/1.1 401 Unauthorized
+date: Thu, 26 Nov 2026 16:25:09 GMT
+server: uvicorn
+content-length: 67
+content-type: application/json
+connection: close
+
 {"detail":"Missing API key. Include header: X-API-Key: <your-key>"}
 ```
 
-Chưa lưu lại status line và headers từ `curl -i`; chạy lại test để chụp đủ bằng chứng HTTP 401. Output gọi thành công bằng API key: **chưa ghi nhận**.
-
 ### Exercise 4.2: JWT authentication
 
-Lấy JWT bằng `POST /auth/token` với demo user `student` / `demo123`. Token hết hạn sau 60 phút; request được bảo vệ gửi token trong header `Authorization: Bearer <token>`. Không dán token vào báo cáo.
+Lấy JWT bằng `POST /auth/token` với demo user `student` / `demo123`. Token hết hạn sau 60 phút; request được bảo vệ gửi token trong header `Authorization: Bearer <token>` (đã che token thật).
 
-Token đã được lấy thành công. Output `curl -i` của request `/ask` có JWT (HTTP 200): **chưa ghi nhận**.
+Output `curl -i` khi gọi `POST /ask` với JWT hợp lệ (`HTTP/1.1 200 OK`):
+
+```http
+HTTP/1.1 200 OK
+date: Thu, 26 Nov 2026 16:24:44 GMT
+server: uvicorn
+content-length: 209
+content-type: application/json
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-xss-protection: 1; mode=block
+referrer-policy: strict-origin-when-cross-origin
+connection: close
+
+{"question":"Hello","answer":"Đây là câu trả lời từ AI agent (mock). Trong production, đây sẽ là response từ OpenAI/Anthropic.","usage":{"requests_remaining":9,"budget_remaining_usd":2.1e-05}}
+```
 
 ### Exercise 4.3: Rate limiting
 
 User tier bị giới hạn **10 request trong 60 giây**; admin tier là **100 request trong 60 giây**. Mã nguồn mô tả thuật toán là Sliding Window Counter và thực tế lưu timestamp từng request trong `deque`, loại bỏ timestamp cũ hơn cửa sổ 60 giây. Khi vượt giới hạn, API trả HTTP 429 cùng thông tin giới hạn và `Retry-After`.
 
-Output thực tế `curl -i` khi vượt giới hạn (HTTP 429): **chưa ghi nhận**.
+Output `curl -i` khi gửi vượt ngưỡng 10 request/phút (request thứ 11 trả `HTTP/1.1 429 Too Many Requests`):
+
+```http
+HTTP/1.1 429 Too Many Requests
+date: Thu, 26 Nov 2026 16:24:45 GMT
+server: uvicorn
+x-ratelimit-limit: 10
+x-ratelimit-remaining: 0
+x-ratelimit-reset: 1795710346
+retry-after: 59
+content-length: 98
+content-type: application/json
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-xss-protection: 1; mode=block
+referrer-policy: strict-origin-when-cross-origin
+connection: close
+
+{"detail":{"error":"Rate limit exceeded","limit":10,"window_seconds":60,"retry_after_seconds":59}}
+```
 
 ### Exercise 4.4: Cost guard và so sánh với hướng Redis
 
