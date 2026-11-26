@@ -1,37 +1,33 @@
-# ==========================================
-# STAGE 1: The Build Environment
-# ==========================================
-# We use a large image that includes the Go compiler and tools
-FROM golang:1.22 AS builder
+# Multi-stage production Dockerfile for Repository Root
+
+# Stage 1: Builder
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY 06-lab-complete/requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Stage 2: Runtime
+FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Copy the rest of the source code
-COPY . .
+# Create non-root user
+RUN useradd -m -u 1000 appuser
 
-# Compile the application into a single, statically-linked binary named "myapp"
-RUN CGO_ENABLED=0 go build -o myapp .
+# Copy virtualenv and app source
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# ==========================================
-# STAGE 2: The Production Environment
-# ==========================================
-# We switch to a completely fresh, microscopic image for production
-FROM alpine:3.19
-
-WORKDIR /app
-
-# Tạo non-root user
-RUN addgroup -S appuser && adduser -S appuser -G appuser
-
-# Đặt ownership cho appuser
+COPY 06-lab-complete/ .
 RUN chown -R appuser:appuser /app
 
-# Chuyển sang non-root user
 USER appuser
 
-# CRITICAL STEP: Copy ONLY the compiled binary from the 'builder' stage
-COPY --from=builder /app/myapp .
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:' + str(__import__('os').getenv('PORT', '8000')) + '/health')" || exit 1
 
-# Expose port and define the command to run the app
-EXPOSE 8080
-CMD ["./myapp"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
