@@ -5,3 +5,41 @@
 #     - envVars: secret như AGENT_API_KEY dùng `generateValue: true` hoặc `sync: false`,
 #       KHÔNG ghi thẳng giá trị
 # ============================================================
+
+services:
+  # ──────────────────────────────────────
+  # Web Service — Production AI Agent
+  # ──────────────────────────────────────
+  - type: web
+    name: production-ai-agent
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    plan: free
+    region: singapore
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: ENVIRONMENT
+        value: production
+      - key: AGENT_API_KEY
+        generateValue: true
+      - key: RATE_LIMIT_PER_MINUTE
+        value: 60
+      - key: DAILY_BUDGET_USD
+        value: 10.0
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: agent-redis
+          property: connectionString
+
+  # ──────────────────────────────────────
+  # Managed Redis Service
+  # ──────────────────────────────────────
+  - type: redis
+    name: agent-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []

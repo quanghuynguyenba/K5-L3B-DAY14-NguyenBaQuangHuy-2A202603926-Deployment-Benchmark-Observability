@@ -1,0 +1,36 @@
+# ============================================================
+# render.yaml (Root) — Render Blueprint cho toàn bộ Repository
+# Trỏ trực tiếp vào thư mục 06-lab-complete
+# ============================================================
+
+services:
+  - type: web
+    name: production-ai-agent
+    runtime: docker
+    dockerContext: 06-lab-complete
+    dockerfilePath: 06-lab-complete/Dockerfile
+    healthCheckPath: /health
+    plan: free
+    region: singapore
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: ENVIRONMENT
+        value: production
+      - key: AGENT_API_KEY
+        generateValue: true
+      - key: RATE_LIMIT_PER_MINUTE
+        value: 60
+      - key: DAILY_BUDGET_USD
+        value: 10.0
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: agent-redis
+          property: connectionString
+
+  - type: redis
+    name: agent-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
