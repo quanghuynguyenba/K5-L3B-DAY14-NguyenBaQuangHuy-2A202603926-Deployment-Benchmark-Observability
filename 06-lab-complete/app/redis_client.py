@@ -30,17 +30,23 @@ def get_redis_client() -> Optional[redis.Redis]:
         return None
 
 
-def redis_healthy() -> bool:
+def redis_status() -> tuple[bool, str]:
     url = settings.redis_url
     if not url:
-        return False
+        return False, "REDIS_URL is not set"
     try:
         client = redis.from_url(
             url,
             decode_responses=True,
-            socket_connect_timeout=1.0,
-            socket_timeout=1.0,
+            socket_connect_timeout=3.0,
+            socket_timeout=3.0,
         )
-        return bool(client.ping())
-    except Exception:
-        return False
+        if bool(client.ping()):
+            return True, "ok"
+        return False, "ping returned False"
+    except Exception as e:
+        return False, str(e)
+
+
+def redis_healthy() -> bool:
+    return redis_status()[0]

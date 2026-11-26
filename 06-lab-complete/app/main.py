@@ -16,7 +16,7 @@ from app.auth import verify_api_key
 from app.config import settings
 from app.cost_guard import check_budget, record_cost
 from app.rate_limiter import check_rate_limit
-from app.redis_client import redis_healthy
+from app.redis_client import redis_healthy, redis_status
 from utils.mock_llm import ask as llm_ask
 
 
@@ -89,10 +89,11 @@ def health():
 
 @app.get("/ready")
 def ready():
-    if not redis_healthy():
+    ok, reason = redis_status()
+    if not ok:
         raise HTTPException(
             status_code=503,
-            detail={"status": "not ready", "redis": False},
+            detail={"status": "not ready", "redis": False, "reason": reason},
         )
     return {"status": "ready", "redis": True}
 
