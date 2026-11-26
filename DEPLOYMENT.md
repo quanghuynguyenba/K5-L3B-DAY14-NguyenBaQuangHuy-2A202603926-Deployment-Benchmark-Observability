@@ -12,7 +12,7 @@
 - `PORT`: 8000 (Render cấp)
 - `ENVIRONMENT`: `production`
 - `AGENT_API_KEY`: Đã cấu hình trên Render Environment
-- `REDIS_URL`: `redis://red-dc440uijnfac73bf0ne0:hcfMJhNDrpxlUcm7vmSLv0chPCAqqf2k@red-dc440uijnfac73bf0ne0:6379`
+- `REDIS_URL`: `redis://red-dc440uijnfac73bf0ne0:<REDACTED_PASSWORD>@red-dc440uijnfac73bf0ne0:6379` (Internal Connection String trên Render)
 - `RATE_LIMIT_PER_MINUTE`: `60`
 - `DAILY_BUDGET_USD`: `10.0`
 

@@ -1,5 +1,26 @@
 # Mission Answers
 
+## Part 1 — Localhost vs Production
+
+### Exercise 1.1: Các anti-pattern trong `01-localhost-vs-production/develop/app.py`
+
+1. **Hardcode secret trong source code (dòng 17–18):** `OPENAI_API_KEY = "sk-hardcoded-fake-key-never-do-this"` và `DATABASE_URL = "postgresql://admin:password123@localhost:5432/mydb"`. Nếu push lên Git, toàn bộ credential bị lộ ngay lập tức. Bản `production/app.py` khắc phục bằng `config.settings` đọc từ biến môi trường.
+2. **Không có config management (dòng 21–22):** `DEBUG = True` và `MAX_TOKENS = 500` được gán cứng trong code, không tách biệt theo môi trường (`develop` / `staging` / `production`).
+3. **Dùng `print()` và log thẳng secret (dòng 33–34, 38):** Dùng `print("[DEBUG] ...")` thay vì structured logging và thậm chí in thẳng `OPENAI_API_KEY` ra stdout (`print(f"[DEBUG] Using key: {OPENAI_API_KEY}")`). Bản `production/app.py` (dòng 28–31) dùng `logging` định dạng JSON có timestamp, level, msg.
+4. **Thiếu Health check & Readiness endpoint (dòng 42):** Không có `/health` và `/ready`, nên cloud platform hoặc load balancer không thể biết khi nào app khởi động xong hoặc bị treo để restart. Bản `production/app.py` dùng `lifespan` + cờ `is_ready`.
+5. **Bind `host="localhost"`, hardcode `port=8000` và bật `reload=True` (dòng 49–53):** `host="localhost"` chỉ nhận kết nối nội bộ máy dev, không chạy được trong Docker/cloud; `port=8000` bỏ qua biến `$PORT` do Railway/Render cấp; `reload=True` tốn CPU/RAM và gây rủi ro trong production.
+
+### Exercise 1.2–1.3: Bảng so sánh Develop vs Production
+
+| Tiêu chí | `develop/app.py` | `production/app.py` | Vì sao quan trọng? |
+|---|---|---|---|
+| **Config & Secrets** | Hardcode `OPENAI_API_KEY`, `DATABASE_URL` | Đọc qua `config.settings` từ env vars | Tuân thủ 12-Factor App, tránh lộ secret lên Git |
+| **Logging** | `print()` thô, in cả API key | `logging` định dạng JSON (`{"time":..., "level":...}`) | Dễ thu thập, parse và tìm kiếm trên Datadog/Loki/ELK |
+| **Health & Readiness** | Không có | Có `/health` (liveness) và `/ready` (readiness) | Cho phép orchestrator restart khi lỗi và chỉ route traffic khi sẵn sàng |
+| **Lifecycle / Shutdown** | Không xử lý | `@asynccontextmanager lifespan` đặt `is_ready = False` khi tắt | Tránh cắt ngang các request đang xử lý (graceful shutdown) |
+| **Network & Port** | `host="localhost"`, `port=8000`, `reload=True` | `0.0.0.0`, port lấy từ `PORT` env, tắt reload | Container nhận được traffic từ ngoài và tương thích Railway/Render |
+| **CORS** | Không cấu hình | `CORSMiddleware` giới hạn `allowed_origins` | Ngăn các trang web lạ gọi trái phép API từ trình duyệt |
+
 ## Part 2 — Docker
 
 ### Exercise 2.1: Dockerfile cơ bản
@@ -196,4 +217,12 @@ Lưu ý: script `test_stateless.py` hiện tại xác minh session continuity v�
 10. **Structured Logging:** Sử dụng custom `JsonFormatter` kế thừa `logging.Formatter` kết hợp HTTP middleware ghi log toàn bộ request/response dưới dạng JSON object hợp lệ chứa timestamp UTC, log level, event, path, status, latency ms.
 11. **Graceful Shutdown:** Quản lý vòng đời qua `lifespan` context manager của FastAPI. Uvicorn chạy PID 1 đón nhận `SIGTERM` khi dừng container, xử lý nốt các request đang bay và thoát êm trong 0.6s (< 10s) với exit code 0.
 12. **Deploy Configuration:** Cung cấp đầy đủ cả `railway.toml` và `render.yaml` chuẩn production, hỗ trợ cấu hình biến `PORT` động từ platform và healthcheck endpoint `/health`.
+
+## AI Log
+
+- **Công cụ sử dụng:** Trợ lý AI Antigravity (hỗ trợ kiểm tra cấu hình, debug lỗi PowerShell/Docker/Render, chạy benchmark & thu thập observability).
+- **Những phần đã tự thực hiện và hiểu rõ:**
+  - Thiết lập và triển khai service + Redis trên Render (cùng region để giao tiếp qua Internal Redis URL).
+  - Hoàn thiện 12/12 tiêu chí trong `06-lab-complete/` (`check_production_ready.py` PASS 42/42).
+  - Thực nghiệm load test, sửa `KNOWLEDGE_BASE` để đạt 100% accuracy quality gate, chạy Locust scale 1 vs 3 và quan sát metrics/traces/alerts trên Grafana, Jaeger, Prometheus.
 
