@@ -94,22 +94,63 @@ Nếu chất lượng bị giảm sút hoặc không đạt trần 100%, lệnh 
 *(Phần này làm trong Part 7 Bước 2 — Exercise 7.4–7.7)*
 
 ### 4.1 Screenshot
-- [ ] Dashboard Grafana khi đang có tải (thấy rõ Golden Signals): `screenshots/grafana-dashboard.png`
-- [ ] Một trace chậm trong Jaeger (thấy span nào chiếm thời gian): `screenshots/jaeger-slow-trace.png`
-- [ ] Một trace lỗi trong Jaeger (có event `exception`): `screenshots/jaeger-error-trace.png`
-- [ ] Trang Alerts của Prometheus với ít nhất 2 alert cùng firing: `screenshots/prometheus-alert-firing.png`
+- [x] Dashboard Grafana khi đang có tải (thấy rõ Golden Signals): `screenshots/grafana-dashboard.png`
+- [x] Một trace chậm trong Jaeger (thấy span nào chiếm thời gian): `screenshots/jaeger-slow-trace.png`
+- [x] Một trace lỗi trong Jaeger (có event `exception`): `screenshots/jaeger-error-trace.png`
+- [x] Trang Alerts của Prometheus với ít nhất 2 alert cùng firing: `screenshots/prometheus-alert-firing.png`
 
 ### 4.2 Thí nghiệm "phá hệ thống"
 | # | Thay đổi | Alert nào firing | Thời gian từ lúc đổi → firing | Panel nào phản ánh rõ nhất |
 |---|---|---|---|---|
-| A | `MOCK_ERROR_RATE=0.2` | `HighErrorRate` | ~30s | Error Rate / Success Rate |
-| B | `MOCK_SLOW_RATE=0.3` | `HighLatencyP95` | ~45s | Latency p50/p95/p99 |
-| C | `LLM_MODEL=mock-llm-large` | `HighCostRate` / `HighLatencyP95` | ~1m | Cost per Minute / Token Usage |
-| D | `docker pause` 1 instance | `InstanceDown` | ~15s | Instances Running / Saturation |
-| E | `AGENT_VERSION=v1` | Không có alert nào firing | Không firing | Metric traffic/latency vẫn bình thường |
+| A | `MOCK_ERROR_RATE=0.2` | `AgentHighErrorRate` | ~1 phút (`for: 1m`) | Error rate & Requests/s theo status code (503) |
+| B | `MOCK_SLOW_RATE=0.3` | `AgentHighLatencyP95` | ~2 phút (`for: 2m`) | Latency /ask — p50 / p95 / p99 |
+| C | `LLM_MODEL=mock-llm-large` | `LLMCostBurnRateHigh` | ~2 phút (`for: 2m`) | Cost burn rate (USD/giờ) |
+| D | `docker pause` 1 instance | `AgentInstanceDown` | ~30 giây (`for: 30s`) | Instances running (giảm từ 2 xuống 1) |
+| E | `AGENT_VERSION=v1` | Không có alert nào firing | Không firing | Traffic & latency bình thường (chỉ giảm accuracy) |
 
 **Thí nghiệm E không làm alert nào firing. Bạn sẽ phát hiện loại sự cố này trong production bằng cách nào?**
 Thí nghiệm E đổi sang `AGENT_VERSION=v1` làm chất lượng câu trả lời bị suy giảm nghiêm trọng (từ 100% xuống 4.3%), nhưng hệ thống hạ tầng vẫn phục vụ HTTP 200 rất nhanh và không hề có lỗi kết nối. Để phát hiện loại sự cố suy giảm chất lượng này, ta cần:
 1. **Chạy Synthetic Eval định kỳ (Continuous Evals)**: Thiết lập một cron job tự động gọi agent với bộ golden dataset mỗi giờ để theo dõi accuracy theo thời gian.
 2. **User Feedback Tracking**: Thu thập metrics từ nút Like/Dislike (thumbs up/down) của người dùng trên UI, tạo custom metric `user_dislike_ratio` và cấu hình alert khi tỷ lệ dislike tăng đột biến.
 3. **LLM-as-a-Judge Online Sampling**: Lấy mẫu ngẫu nhiên 5% request production đưa qua một LLM giám sát (evaluator) để chấm điểm độ liên quan và tính chính xác của câu trả lời.
+
+### 4.3 Debug bằng trace
+
+Chọn 1 trace chậm nhất bạn tìm được:
+
+- `trace_id`: `4ca5f14de3ab9d2ef16bfcaef311690f`
+- Tổng thời gian: `1688.1 ms` (~1.7 s)
+- Span chiếm nhiều thời gian nhất: `chat mock-llm-small` (~1667 ms, chiếm ~98.7% tổng thời gian; trong khi `agent.retrieve_context` chỉ mất `20.8 ms`)
+- Dòng log tương ứng (grep theo `trace_id`):
+
+```json
+{"ts": "2026-11-26T15:43:02.870729+00:00", "level": "INFO", "service": "observable-agent", "instance": "b7fb8febbaf2", "event": "http_request", "trace_id": "4ca5f14de3ab9d2ef16bfcaef311690f", "span_id": "ab325047c79206cc", "request_id": "deb76c38bfcf", "method": "POST", "route": "/ask", "status": 200, "ms": 1688.1}
+```
+
+---
+
+## 5. Benchmark scaling (production, Locust headless, 100 users, 2 phút)
+
+*(Số liệu tổng hợp từ `benchmark-results/scale_1_stats.csv` và `benchmark-results/scale_3_stats.csv`)*
+
+| Số instance | RPS (Aggregated) | p50 (ms) | p95 (ms) | p99 (ms) | Failures |
+|---|---|---|---|---|---|
+| 1 | 65.71 | 190 | 230 | 1700 | 72 (0.91%) |
+| 3 | 65.77 | 190 | 230 | 1700 | 65 (0.83%) |
+
+**Giải thích kết quả:** Scale có cải thiện p95 không? Nút thắt nằm ở đâu?
+- Trong kịch bản Locust 100 users với `wait_time = between(0.5, 2)` giây, tổng lượng request sinh ra thực tế chỉ ở mức ~65.7 req/s.
+- Vì agent sử dụng FastAPI bất đồng bộ (async event loop) và công việc chính của mock LLM là chờ I/O (`asyncio.sleep`), **chỉ riêng 1 instance đã đủ sức xử lý mức tải 65.7 req/s** mà chưa chạm ngưỡng bão hòa CPU. Do đó, việc scale lên 3 instances không làm giảm thêm p50 (190ms) hay p95 (230ms).
+- Nút thắt (bottleneck) lúc này nằm ở **tốc độ sinh tải tối đa của Locust (bị giới hạn bởi `wait_time`)** và **upstream LLM latency** (3% slow request mất ~1.7s khiến p99 giữ nguyên ở 1700ms dù chạy 1 hay 3 instance). Horizontal scaling chỉ giúp cải thiện p95 rõ rệt khi mức tải đồng thời vượt ngưỡng bão hòa của 1 container.
+
+---
+
+## 6. Kết luận
+
+- **3 điều học được về benchmark & observability:**
+  1. **Đo bằng percentile (`p95`/`p99`) thay vì trung bình (`avg`):** Giá trị trung bình che giấu các spike bất thường (tail latency), trong khi p95/p99 phản ánh sát nhất trải nghiệm của nhóm người dùng gặp độ trễ cao.
+  2. **Chất lượng & Kinh tế đi kèm Quality Gate:** Chi phí thực tế của AI agent phải đánh giá trên **cost / câu trả lời đúng** chứ không phải cost / request; đồng thời bắt buộc phải có Eval Quality Gate trong CI vì hệ thống giám sát hạ tầng (Prometheus/Grafana) không thể tự phát hiện lỗi suy giảm chất lượng câu trả lời.
+  3. **Sức mạnh của 3 trụ cột Observability:** Metrics (Prometheus + Grafana) giúp phát hiện nhanh bất thường qua Golden Signals và Alerting; Traces (Jaeger) khoanh vùng chính xác span gây chậm/lỗi; Structured JSON Logs gắn `trace_id` kết nối trực tiếp log với trace để debug nhanh chóng.
+- **Nếu đưa agent này lên production thật, sẽ thêm metric / alert nào nữa:**
+  - **Continuous Eval & User Feedback Metrics:** Metric `agent_eval_accuracy` chạy định kỳ trên tập golden dataset và `user_dislike_ratio` từ phản hồi người dùng, kèm alert nếu chất lượng tụt dưới ngưỡng SLO.
+  - **Budget & Rate Limit Alerts:** Alert `DailyBudgetNearLimit` (khi chi tiêu vượt 85% `DAILY_BUDGET_USD`) và `HighRateLimit429Rate` (khi tỷ lệ HTTP 429 tăng đột biến) để kịp thời phát hiện tấn công lạm dụng API hoặc rò rỉ key.
